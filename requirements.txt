@@ -1,0 +1,8 @@
+# Core Framework & LLM SDK
+streamlit>=1.35.0
+google-genai>=0.1.1
+python-dotenv>=1.0.0
+
+# Testing & Quality Assurance
+pytest>=8.0.0
+pytest-mock>=3.12.0
