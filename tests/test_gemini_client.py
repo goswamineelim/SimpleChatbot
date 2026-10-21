@@ -102,3 +102,62 @@ def test_handles_missing_usage_metadata():
     ))
 
     assert not any(event["type"] == "usage" for event in events)
+
+
+def test_tool_calling_loop_executes_tool_and_yields_attribution():
+    sdk = Mock()
+
+    # Step 1: Model returns a function call
+    func_call = SimpleNamespace(
+        name="calculate",
+        args={"expression": "32**5"},
+    )
+    chunk_1 = SimpleNamespace(
+        text=None,
+        function_calls=[func_call],
+        usage_metadata=None,
+    )
+
+    # Step 2: Model returns final text after getting function response
+    chunk_2 = SimpleNamespace(
+        text="The calculated answer is 33554432.",
+        function_calls=None,
+        usage_metadata=None,
+    )
+
+    sdk.models.generate_content_stream.side_effect = [
+        iter([chunk_1]),
+        iter([chunk_2]),
+    ]
+
+    mock_registry = Mock()
+    mock_registry.get_tools.return_value = [Mock()]
+    mock_registry.execute.return_value = "33554432"
+
+    client = GeminiClient(
+        sdk_client=sdk,
+        model="test-model",
+        tool_registry=mock_registry,
+    )
+
+    events = list(client.stream_response(
+        messages=[{"role": "user", "content": "What is 32^5?"}],
+        temperature=0.7,
+    ))
+
+    mock_registry.execute.assert_called_once_with(
+        "calculate",
+        {"expression": "32**5"},
+    )
+
+    types_emitted = [e["type"] for e in events]
+    assert "tool_start" in types_emitted
+    assert "tool_complete" in types_emitted
+    assert "text" in types_emitted
+
+    # Verify that the text includes tool attribution
+    full_text = "".join(e["text"] for e in events if e["type"] == "text")
+    assert "🛠️ **Tools Used:**" in full_text
+    assert "calculate(expression='32**5')" in full_text
+    assert "33554432" in full_text
+    assert "The calculated answer is 33554432." in full_text

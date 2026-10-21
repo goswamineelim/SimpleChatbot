@@ -5,6 +5,7 @@ from services.chat_service import ChatService
 from services.gemini_client import GeminiClient
 from services.memory_service import MemoryService
 from services.long_term_memory_service import LongTermMemoryService
+from services.tools.tool_registry import get_default_tool_registry
 from state.session import get_chat_store
 from ui.chat_view import render_messages
 from ui.sidebar import render_sidebar
@@ -19,10 +20,11 @@ st.set_page_config(
 
 st.title("LLM Chat Playground")
 
-gemini_client = GeminiClient()
+tool_registry = get_default_tool_registry()
+gemini_client = GeminiClient(tool_registry=tool_registry)
 ltm_service = LongTermMemoryService(client=gemini_client)
 chat_store = get_chat_store()
-sidebar_settings = render_sidebar(chat_store, ltm_service=ltm_service)
+sidebar_settings = render_sidebar(chat_store, ltm_service=ltm_service, tool_registry=tool_registry)
 temperature = sidebar_settings.temperature
 conv_token_limit = sidebar_settings.conv_token_limit
 summary_budget = sidebar_settings.summary_budget
@@ -42,6 +44,7 @@ if prompt:
     # Stream the assistant's response.
     with st.chat_message("assistant"):
         response_placeholder = st.empty()
+        status_placeholder = st.empty()
         full_response = ""
         latest_usage = None
 
@@ -69,7 +72,16 @@ if prompt:
                 context_messages,
                 temperature=temperature,
             ):
-                if event["type"] == "text":
+                if event["type"] == "tool_start":
+                    tool_name = event["tool"]
+                    icon = "🧮" if tool_name == "calculate" else ("🌐" if tool_name == "web_search" else "🔧")
+                    status_placeholder.info(f"{icon} Executing **{tool_name}**...")
+
+                elif event["type"] == "tool_complete":
+                    status_placeholder.empty()
+
+                elif event["type"] == "text":
+                    status_placeholder.empty()
                     full_response += event["text"]
                     response_placeholder.markdown(
                         full_response + "▌"
@@ -78,6 +90,7 @@ if prompt:
                 elif event["type"] == "usage":
                     latest_usage = event["usage"]
 
+            status_placeholder.empty()
             response_placeholder.markdown(full_response)
 
             # Persist the completed assistant response.

@@ -29,7 +29,7 @@ class SidebarSettings:
         return getattr(self, item)
 
 
-def render_sidebar(chat_store=None, ltm_service=None):
+def render_sidebar(chat_store=None, ltm_service=None, tool_registry=None):
     if chat_store is None:
         chat_store = get_chat_store()
 
@@ -124,6 +124,11 @@ def render_sidebar(chat_store=None, ltm_service=None):
                         st.rerun()
                 else:
                     st.caption("No long-term memories saved yet. Mention facts or preferences in conversation!")
+
+        if tool_registry is not None:
+            tools = tool_registry.get_tools()
+            with st.expander(f"🛠️ Active Tools ({len(tools)})", expanded=False):
+                st.markdown("• 🧮 **Calculator** (math evaluator)\n• 🌐 **Web Search** (DuckDuckGo)")
 
         st.divider()
         st.subheader("Token usage")
