@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from services.chat_service import ChatService
 from services.gemini_client import GeminiClient
 from services.memory_service import MemoryService
+from services.long_term_memory_service import LongTermMemoryService
 from state.session import get_chat_store
 from ui.chat_view import render_messages
 from ui.sidebar import render_sidebar
@@ -18,8 +19,10 @@ st.set_page_config(
 
 st.title("LLM Chat Playground")
 
+gemini_client = GeminiClient()
+ltm_service = LongTermMemoryService(client=gemini_client)
 chat_store = get_chat_store()
-sidebar_settings = render_sidebar(chat_store)
+sidebar_settings = render_sidebar(chat_store, ltm_service=ltm_service)
 temperature = sidebar_settings.temperature
 conv_token_limit = sidebar_settings.conv_token_limit
 summary_budget = sidebar_settings.summary_budget
@@ -43,16 +46,20 @@ if prompt:
         latest_usage = None
 
         try:
-            client = GeminiClient()
+            client = gemini_client
             service = ChatService(client)
             memory_service = MemoryService(client)
 
-            # Prepare context within token limit and summary budget
+            # 1. Recall relevant long-term memories for this prompt
+            recalled_memories = ltm_service.recall_memories(prompt, top_k=3)
+
+            # 2. Prepare context within token limit, summary budget, and long-term memories
             context_messages, updated_summary = memory_service.prepare_context(
                 messages=chat_store.get_messages(),
                 current_summary=chat_store.get_running_summary(),
                 conv_token_limit=conv_token_limit,
                 summary_budget=summary_budget,
+                long_term_memories=recalled_memories,
             )
 
             if updated_summary != chat_store.get_running_summary():
@@ -78,6 +85,11 @@ if prompt:
 
             if latest_usage is not None:
                 chat_store.set_token_usage(latest_usage)
+
+            # 3. Post-generation extraction of any long-term memories
+            new_memories = ltm_service.extract_and_store_facts(prompt)
+            if new_memories:
+                st.toast(f"🧠 Remembered: {new_memories[0]}")
 
         except Exception as error:
             response_placeholder.empty()

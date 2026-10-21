@@ -93,3 +93,52 @@ def test_exceeding_token_limit_triggers_summarization():
     assert any("Condensed summary of conversation." in m["content"] for m in context_messages)
     # The latest user message must be preserved
     assert context_messages[-1]["content"] == "Latest user prompt"
+
+
+def test_prepare_context_with_long_term_memories():
+    mock_client = Mock()
+    service = MemoryService(client=mock_client)
+
+    messages = [
+        {"role": "user", "content": "What tools should I use?"},
+    ]
+    ltm = [
+        "User prefers Python over JavaScript",
+        "User works on GenAI applications",
+    ]
+
+    context_messages, _ = service.prepare_context(
+        messages=messages,
+        long_term_memories=ltm,
+    )
+
+    # First turn should inject long-term memories
+    assert len(context_messages) == 3
+    assert "User prefers Python over JavaScript" in context_messages[0]["content"]
+    assert "User works on GenAI applications" in context_messages[0]["content"]
+    assert context_messages[1]["role"] == "assistant"
+    assert context_messages[2] == messages[0]
+
+
+def test_prepare_context_with_summary_and_long_term_memories():
+    mock_client = Mock()
+    service = MemoryService(client=mock_client)
+
+    messages = [
+        {"role": "user", "content": "Next step?"},
+    ]
+    ltm = ["User lives in Berlin"]
+    summary = "Earlier talked about packing bags."
+
+    context_messages, updated_summary = service.prepare_context(
+        messages=messages,
+        current_summary=summary,
+        long_term_memories=ltm,
+    )
+
+    assert len(context_messages) == 3
+    content = context_messages[0]["content"]
+    assert "User lives in Berlin" in content
+    assert "Earlier talked about packing bags." in content
+    assert updated_summary == summary
+

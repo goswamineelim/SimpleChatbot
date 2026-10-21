@@ -25,23 +25,38 @@ class MemoryService:
         current_summary: str = "",
         conv_token_limit: int = 1500,
         summary_budget: int = 200,
+        long_term_memories: list = None,
     ) -> tuple:
         """
         Prepare context payload for the LLM.
         Summarizes older messages if total tokens exceed conv_token_limit.
+        Injects long_term_memories if provided.
         Returns: (context_messages, updated_summary)
         """
         total_tokens = estimate_messages_tokens(messages)
         if current_summary:
             total_tokens += estimate_tokens(current_summary)
 
-        # Under limit: send messages directly (with prepended summary if one exists)
+        def _format_context_header(summary: str) -> str:
+            parts = []
+            if long_term_memories:
+                bullets = "\n".join(f"- {m}" for m in long_term_memories)
+                parts.append(
+                    f"Relevant memories about the user from earlier conversations:\n{bullets}\n"
+                    "Use these facts to personalize your responses and answer questions about the user."
+                )
+            if summary:
+                parts.append(f"Earlier conversation summary: {summary}")
+            return "\n\n".join(parts)
+
+        # Under limit: send messages directly (with prepended summary/memories if either exists)
         if total_tokens <= conv_token_limit or len(messages) <= 2:
-            if current_summary:
+            header = _format_context_header(current_summary)
+            if header:
                 context_messages = [
                     {
                         "role": "user",
-                        "content": f"[Earlier conversation summary: {current_summary}]",
+                        "content": f"[{header}]",
                     },
                     {
                         "role": "assistant",
@@ -99,10 +114,11 @@ class MemoryService:
 
         summary_text = summary_text.strip() or current_summary
 
+        header = _format_context_header(summary_text)
         context_messages = [
             {
                 "role": "user",
-                "content": f"[Earlier conversation summary: {summary_text}]",
+                "content": f"[{header}]",
             },
             {
                 "role": "assistant",

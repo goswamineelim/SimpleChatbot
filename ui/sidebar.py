@@ -29,7 +29,7 @@ class SidebarSettings:
         return getattr(self, item)
 
 
-def render_sidebar(chat_store=None):
+def render_sidebar(chat_store=None, ltm_service=None):
     if chat_store is None:
         chat_store = get_chat_store()
 
@@ -105,6 +105,25 @@ def render_sidebar(chat_store=None):
         if running_summary:
             with st.expander("Active Memory Summary"):
                 st.caption(running_summary)
+
+        if ltm_service is not None:
+            memories = ltm_service.get_all_memories()
+            with st.expander(f"🧠 Long-Term Memories ({len(memories)})"):
+                if memories:
+                    for mem in memories:
+                        m_col1, m_col2 = st.columns([5, 1])
+                        with m_col1:
+                            st.markdown(f"• {mem['text']}")
+                        with m_col2:
+                            if st.button("🗑️", key=f"del_mem_{mem['id']}", help="Delete memory"):
+                                ltm_service.delete_memory(mem["id"])
+                                st.rerun()
+
+                    if st.button("Clear all memories", use_container_width=True):
+                        ltm_service.clear_all()
+                        st.rerun()
+                else:
+                    st.caption("No long-term memories saved yet. Mention facts or preferences in conversation!")
 
         st.divider()
         st.subheader("Token usage")
